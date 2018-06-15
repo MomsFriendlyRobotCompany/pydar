@@ -6,7 +6,7 @@
 
 # Specs
 
-|Items	Specifications
+| Items	                   | Specifications                     |
 |--------------------------|------------------------------------|
 | Operating supply voltage |                          5V DC ±5% |
 | Light source             | Semiconductor Laser Diode(λ=785nm) |
