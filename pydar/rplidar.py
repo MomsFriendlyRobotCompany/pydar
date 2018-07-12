@@ -95,7 +95,8 @@ class RPLidar(object):
     # motor = False  #: Is motor running?
     # baudrate = 115200  #: Baudrate for serial port
 
-    def __init__(self, port, baudrate=115200, timeout=1, logger=None):
+    # def __init__(self, port, baudrate=115200, timeout=1, logger=None):
+    def __init__(self, logger=None):
         '''Initilize RPLidar object for communicating with the sensor.
 
         Parameters
@@ -117,8 +118,8 @@ class RPLidar(object):
         if logger is None:
             logger = logging.getLogger(__name__)
         self.logger = logger
-        self.open(port, baudrate, timeout)
-        self.start_motor()
+        # self.open(port, baudrate, timeout)
+        # self.start_motor()
 
     def __del__(self):
         # self.stop()
@@ -214,6 +215,9 @@ class RPLidar(object):
         if len(data) != dsize:
             raise RPLidarException('Wrong body size')
         return data
+
+    def info(self):
+        self.get_info()
 
     def get_info(self):
         '''Get device information
