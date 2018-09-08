@@ -44,9 +44,9 @@ class LDS01(object):
 
     def run(self, state):
         if state:
-            self.serial.write("b")
+            self.serial.write(b"b")
         else:
-            self.serial.write("e")
+            self.serial.write(b"e")
         time.sleep(0.25)
 
     def read6(self, bytes):
