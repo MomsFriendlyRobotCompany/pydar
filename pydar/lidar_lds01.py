@@ -4,6 +4,7 @@ from __future__ import division, print_function
 from serial import Serial
 import time
 from struct import Struct
+from base import Base
 
 
 unpack_unsigned_byte = Struct('B').unpack
@@ -12,7 +13,7 @@ unpack_unsigned_41byte = Struct('41B').unpack
 unpack_unsigned_2518byte = Struct('2518B').unpack
 
 
-class LDS01(object):
+class LDS01(Base):
     """
     42 bytes per 6 degree packet
     360 deg/6 deg = 60 packets
