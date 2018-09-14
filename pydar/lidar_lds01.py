@@ -25,6 +25,8 @@ class LDS01(object):
         self.err_cnt = 0
         self.debug = False
 
+        self.baudrate = 230400  # default speed
+
     def __del__(self):
         if self.serial.is_open:
             self.close()
@@ -42,7 +44,12 @@ class LDS01(object):
         except:
             raise Exception('LIDAR: could not open', port)
 
-    def run(self, state):
+    def set_run(self, state):
+        """
+        Sends run command to lidar
+        'b': start
+        'e': stop
+        """
         if state:
             self.serial.write(b"b")
         else:
@@ -95,7 +102,8 @@ class LDS01(object):
                 index = 4+i*6
                 ii, dd = self.read6(pkt[index:index+4])  # the reserved bytes aren't used
                 self.illum[angle + i] = ii
-                self.dist[angle + i] = dd
+                # self.dist[angle + i] = dd
+                self.dist[angle + i] = (angle+i, dd,)
         else:
             self.debug_print('{} {} {}'.format('header error', hex(pkt[0]), hex(pkt[1])))
             return 1
