@@ -1,11 +1,9 @@
-#!/usr/bin/env python2
+#!/usr/bin/env python3
 # MIT License Kevin Walchko (c) 2018
 #
 # this needs: pip install the-collector
 # this needs: pip install pydar
 
-from __future__ import division
-from __future__ import print_function
 from pydar import LDS01
 import time
 from math import pi

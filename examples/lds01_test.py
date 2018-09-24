@@ -1,4 +1,4 @@
-#!/usr/bin/env python2
+#!/usr/bin/env python3
 # MIT License Kevin Walchko (c) 2018
 #
 # this needs: pip install pydar
