@@ -99,69 +99,128 @@ class YDLidar(Base):
         self.serial.write(dmsg)
         time.sleep(0.1)
 
-    def start_motor(self):
-        self.serial.dtr = 1
-
-    def stop_motor(self):
-        self.serial.dtr = 0
-
-    def scan(self):
-        pass
-
-    def get_all(self):
-        print("valid scan message header")
-
-        num_buf = self.serial.inWaiting()
-        pkt = self.serial.read(num_buf)
-
-        # print("raw pkt[{}]: {}".format(len(pkt), pkt))
-
-        pkt = unpack('{}B'.format(num_buf), pkt)
-
-        print("packet: {}".format([hex(x) for x in pkt]))
-
-        # print(">> pkt data type", type(pkt))
-        # if pkt[0] == 0xaa and pkt[1] == 0x55:
-        ph = pkt[:2]
-        if ph == (0xaa, 0x55,):
-            pkt_type = pkt[2]
-            num = pkt[3]
-            start_angle = (pkt[5] << 8) + pkt[4]
-            stop_angle = (pkt[7] << 8) + pkt[6]
-            cksum = (pkt[9] << 8) + pkt[8]
-
-            print('='*40)
-            print('Start: {}      Stop: {}'.format(start_angle, stop_angle))
-            print('checksum: {}'.format(cksum))
-            print('Number: {}'.format(num))
-            for i in range(num):
-                s = self.serial.read(2)
-                s = unpack('2B', s)
-                print("  pt[{}]: {}".format(i, (s[1] << 8) + s[0]))
+    # def start_motor(self):
+    #     self.serial.dtr = 1
+    #
+    # def stop_motor(self):
+    #     self.serial.dtr = 0
+    def motor(self, val=False):
+        """
+        Turns on/off the motor which spins the lidar.
+        """
+        if val:
+            self.serial.dtr = 1
         else:
-            print('*'*40)
-            print("<<< Bad scan data >>>")
-            dprint(pkt)
-            print('*'*40)
+            self.serial.dtr = 0
 
-    def get(self):
+    def start(self):
         ser_wait = self.serial.inWaiting()
         print(">> input buffer waiting:", ser_wait)
         if ser_wait > 0:
             self.serial.flushInput()
 
-        msg = [0xA5, self.SCAN]  # 0xA560
+        msg = [0xA5, 0x60]  # start scan: 0xA560
         dmsg = pack('2B', *msg)
         self.serial.write(dmsg)
         time.sleep(0.1)
-        pkt = self.serial.read(7)
-        header = pkt
-        d = unpack('7B', header)
 
-        print("header[{}]: {}".format(len(d), [hex(x) for x in d]))  # packet: (165, 90, 5, 0, 0, 64, 129)
+    def angle(self, l, h):
+        """
+        Convert FSA and LSA to an angular degree
+        """
+        return (((h >> 1) << 8) + l) / 64
 
-        if d == (self.HEADER, self.RESPONSE, 0x05, 0, 0, 0x40, 0x81):
-            get_all()
+    def angle_correction(self, distance):
+        return 180/pi*atan(21.8*(155.3-distance)/(155.3*distance))
+
+    def get_all(self, pkt):
+        """
+        Grabs the streaming data ... should this be a thread with a buffer?
+
+        pkt is unpacked data
+        """
+        # num_buf = self.serial.inWaiting()
+        # pkt = self.serial.read(num_buf)
+
+        # print("raw pkt[{}]: {}".format(len(pkt), pkt))
+
+        # pkt = unpack('{}B'.format(num_buf), pkt)
+
+        print("packet: {}".format([hex(x) for x in pkt]))
+
+        # print(">> pkt data type", type(pkt))
+        # if pkt[0] == 0xaa and pkt[1] == 0x55:
+        # header: 0x55AA or [0xAA, 0x55]
+        ph = pkt[:2]
+        # pkt_type =  pkt[2]
+        if ph == (0xaa, 0x55,):
+            pkt_type = pkt[2]
+            num = pkt[3]
+            start_angle = angle(*pkt[4:6])
+            stop_angle = angle(*pkt[6:8])
+            cksum = 0
+
+            print('='*40)
+            print('Start: {}      Stop: {}'.format(start_angle, stop_angle))
+            print('checksum: {}'.format(cksum))
+            print('Number: {}'.format(num))
+
+            distance = []
+            data = pkt[10:]
+
+            if num*2 != len(data):
+                print("*** not enough data[{}] == num[{}] ***".format(len(data), num))
+
+            for i in range(num):
+                dist = ((data[2*i + 1] << 8) + data[2*i])/4/1000  # meters
+                distance.append(dist)
+
+            fsac = self.angle_correction(distance[0])
+            lsac = self.angle_correction(distance[-1])
+
+            start_angle += fsac
+            stop_angle += lsac
+            da = (start_angle - stop_angle)/num
+            angle = start_angle
+
+            scan = []
+            for r in distance:
+                scan.append((angle, r,))
+                angle += da
+            return scan
+            
+        else:
+            print('*'*40)
+            print("<<< Bad scan data >>>")
+            dprint(pkt)
+            print('*'*40)
+            return None
+
+    def get(self):
+        # ser_wait = self.serial.inWaiting()
+        # print(">> input buffer waiting:", ser_wait)
+        # if ser_wait > 0:
+        #     self.serial.flushInput()
+        #
+        # msg = [0xA5, 0x60]  # start scan: 0xA560
+        # dmsg = pack('2B', *msg)
+        # self.serial.write(dmsg)
+        # time.sleep(0.1)
+
+        # read what is in the buffer
+        pkt = self.serial.read(1024)
+        d = unpack('{}B'.format(len(pkt)), header)
+
+        print("packet[{}], header: {}".format(len(d), [hex(x) for x in d[:7]]))  # packet: (165, 90, 5, 0, 0, 64, 129)
+
+        if d == (0xA5, self.RESPONSE, 0x05, 0, 0, 0x40, 0x81,):
+            """
+            Per the documentation, you ignore the response length. As long as
+            this header is good, then grab the data which will stream until
+            stop() is called.
+            """
+            print("valid scan message header")
+            get_all(d[7:])
         else:
             print('*'*40)
             print('<<< invalid pkt >>>')
@@ -169,27 +228,27 @@ class YDLidar(Base):
             print('*'*40)
 
 
-    def valid_scan_pkt(self, pkt):
-        dprint(pkt)
-        header = pkt[:7]
-        d = unpack('7B', header)
-        print("valid scan message header:", d == (self.HEADER, self.RESPONSE, 0x05, 0, 0, 0x40, 0x81))
-
-        # tell it to send
-        print('-'*40)
-        # msg = [0xA5, self.SCAN]
-        # dmsg = pack('2B', *msg)
-        # self.serial.write(dmsg)
-        # pkt = []
-        # while len(pkt) == 0:
-        #     pkt = self.serial.read(1024)
-
-        # dprint(pkt)
-        # actual scan header
-        header = pkt[7:16]
-        print('header', len(header))
-        d = unpack('10B', header)
-        print('scan header:', d)
+    # def valid_scan_pkt(self, pkt):
+    #     dprint(pkt)
+    #     header = pkt[:7]
+    #     d = unpack('7B', header)
+    #     print("valid scan message header:", d == (self.HEADER, self.RESPONSE, 0x05, 0, 0, 0x40, 0x81))
+    #
+    #     # tell it to send
+    #     print('-'*40)
+    #     # msg = [0xA5, self.SCAN]
+    #     # dmsg = pack('2B', *msg)
+    #     # self.serial.write(dmsg)
+    #     # pkt = []
+    #     # while len(pkt) == 0:
+    #     #     pkt = self.serial.read(1024)
+    #
+    #     # dprint(pkt)
+    #     # actual scan header
+    #     header = pkt[7:16]
+    #     print('header', len(header))
+    #     d = unpack('10B', header)
+    #     print('scan header:', d)
 
     # def valid_info_pkt(self, pkt):
     #     """
