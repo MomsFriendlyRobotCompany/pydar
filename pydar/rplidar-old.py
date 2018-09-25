@@ -1,4 +1,4 @@
-'''Simple and lightweight module for working with RPLidar rangefinder scanners.
+"""Simple and lightweight module for working with RPLidar rangefinder scanners.
 
 The MIT License (MIT)
 
@@ -43,7 +43,7 @@ Usage example:
 >>> lidar.close()
 
 For additional information please refer to the RPLidar class documentation.
-'''
+"""
 import logging
 import sys
 import time
@@ -523,7 +523,7 @@ class RPLidarA1(RPLidar):
 
         self.set_pwm(0)
         time.sleep(.001)
-        
+
         self.motor_running = False
 
 

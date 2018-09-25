@@ -8,7 +8,7 @@ from build_utils import BinaryDistribution
 
 PACKAGE_NAME = 'pydar'
 BuildCommand.pkg = PACKAGE_NAME
-# BuildCommand.py3 = False  # python 3 build isn't working yet with zmq, need time to fix
+# BuildCommand.py2 = False  #
 PublishCommand.pkg = PACKAGE_NAME
 PublishCommand.version = VERSION
 README = open('readme.md').read()
@@ -27,7 +27,7 @@ setup(
 		'Development Status :: 4 - Beta',
 		'License :: OSI Approved :: MIT License',
 		'Programming Language :: Python :: 2.7',
-		'Programming Language :: Python :: 3.6',
+		'Programming Language :: Python :: 3.7',
 		'Operating System :: Unix',
 		'Operating System :: POSIX :: Linux',
 		'Operating System :: MacOS :: MacOS X',

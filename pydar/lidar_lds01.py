@@ -22,6 +22,7 @@ class LDS01(object):
         self.serial = Serial()
         self.illum = [0] * 360
         self.dist = [0] * 360
+        self.scan = [(0,0,)] * 360
         self.err_cnt = 0
         self.debug = False
 
@@ -32,6 +33,10 @@ class LDS01(object):
     def debug_print(self, s):
         if self.debug:
             print(s)
+
+    def close(self):
+        self.run(False)
+        self.serial.close()
 
     def open(self, port):
         self.serial.port = port
@@ -96,6 +101,7 @@ class LDS01(object):
                 ii, dd = self.read6(pkt[index:index+4])  # the reserved bytes aren't used
                 self.illum[angle + i] = ii
                 self.dist[angle + i] = dd
+                self.scan[angle + i] = (angle + i, dd,)
         else:
             self.debug_print('{} {} {}'.format('header error', hex(pkt[0]), hex(pkt[1])))
             return 1
@@ -135,6 +141,7 @@ class LDS01(object):
         self.good_read = 0
         self.illum = [0] * 360
         self.dist = [0] * 360
+        self.scan = [(0,0,)] * 360
 
         byte = 0x00
         while byte != 0xFA:  # dec: 250
@@ -163,7 +170,7 @@ class LDS01(object):
             else:
                 self.good_read += 1
 
-        return self.dist
+        return self.scan
 
         # print('good reads:', self.good_read)
 
@@ -224,7 +231,3 @@ class LDS01(object):
     #         if ret:
     #             self.err_cnt += 1
     #             print(self.err_cnt, 'packet error')
-
-    def close(self):
-        self.run(False)
-        self.serial.close()
