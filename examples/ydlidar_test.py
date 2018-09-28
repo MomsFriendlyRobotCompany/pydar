@@ -7,7 +7,8 @@ import platform
 
 if __name__ == "__main__":
     if platform.system() == 'Linux':
-        port = "/dev/ttyUSB1"
+        # port = "/dev/ttyUSB1"
+        port = "/dev/serial/by-id/usb-Silicon_Labs_CP2102_USB_to_UART_Bridge_Controller_0001-if00-port0"
     elif platform.system() == 'Darwin':
         port = '/dev/tty.SLAB_USBtoUART'
 
@@ -15,14 +16,19 @@ if __name__ == "__main__":
     lidar.open(port, 128000)
     lidar.restart()
 
-    info = lidar.info()
-    print(info)
+    lidar.start()
+
+    # info = lidar.info()
+    # print(info)
 
     # lidar.start_motor()
 
-    print(lidar.health())
+    # print(lidar.health())
 
-    # lidar.start_motor()
+    lidar.motor(True)
+    time.sleep(1)
+    ans = lidar.get()
+    print('get returned:', ans)
     # time.sleep(1)
     # lidar.stop_motor()
 
@@ -37,3 +43,6 @@ if __name__ == "__main__":
     # lidar.serial.dtr = 0
     # info = lidar.info()
     # print(info)
+
+    lidar.motor(False)
+    time.sleep(1)
