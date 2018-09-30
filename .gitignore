@@ -7,3 +7,5 @@ build
 ._*
 __pycache__
 dist
+sdk-master
+*.docx
