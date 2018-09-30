@@ -22,12 +22,14 @@ Usage example:
 
 For additional information please refer to the RPLidar class documentation.
 '''
-import logging
+# import logging
 import sys
 import time
 import codecs
 import serial
 import struct
+from struct import pack, unpack
+from threading import Thread
 
 SYNC_BYTE = b'\xA5'
 SYNC_BYTE2 = b'\x5A'
@@ -83,7 +85,7 @@ def _process_scan(raw):
         raise RPLidarException('Check bit not equal to 1')
     angle = ((_b2i(raw[1]) >> 1) + (_b2i(raw[2]) << 7)) / 64.
     distance = (_b2i(raw[3]) + (_b2i(raw[4]) << 8)) / 4.
-    return new_scan, quality, angle, distance
+    return (new_scan, quality, angle, distance,)
 
 
 class RPLidar(object):
@@ -115,22 +117,36 @@ class RPLidar(object):
         # self.baudrate = baudrate
         # self.timeout = timeout
         self.motor_running = False
-        if logger is None:
-            logger = logging.getLogger(__name__)
-        self.logger = logger
+        # if logger is None:
+        #     logger = logging.getLogger(__name__)
+        # self.logger = logger
         # self.open(port, baudrate, timeout)
         # self.start_motor()
 
+        self.scan = [(0,0,)]*360
+        self.shutdown = False
+        self.new_scan = False
+
     def __del__(self):
         # self.stop()
-        self.stop_motor()
-        self.close()
+        self.shutdown = True
+        if self._serial_port:
+            self.motor(False)
+            time.sleep(1)
+            self.close()
         print("bye")
+
+    def start(self):
+        self.shutdown = False
+        t = Thread(target=self.update2, name="rplidar", args=())
+        t.daemon = True
+        t.start()
+        return
 
     def open(self, port, baudrate=115200, timeout=1):
         '''Connects to the serial port with the name `self.port`. If it was
         connected to another serial port disconnects from it first.'''
-        if self._serial_port is not None:
+        if self._serial_port:
             self.close()
         try:
             self._serial_port = serial.Serial(
@@ -140,6 +156,8 @@ class RPLidar(object):
                 stopbits=serial.STOPBITS_ONE,
                 timeout=timeout,
                 dsrdtr=True)
+
+            self.serial = self._serial_port
         except serial.SerialException as err:
             raise RPLidarException('Failed: %s' % err)
         # self.reset()
@@ -147,6 +165,8 @@ class RPLidar(object):
     def close(self):
         '''Disconnects from the serial port'''
         self.stop()
+        self.shutdown = True
+        time.sleep(0.1)
         if self._serial_port.is_open:
             self._serial_port.close()
             self._serial_port = None
@@ -154,72 +174,72 @@ class RPLidar(object):
     def set_pwm(self, pwm):
         assert(0 <= pwm <= MAX_MOTOR_PWM)
         payload = struct.pack("<H", pwm)
-        self._send_payload_cmd(SET_PWM_BYTE, payload)
+        # self._send_payload_cmd(SET_PWM_BYTE, payload)
 
-    def start_motor(self):
-        '''Starts sensor motor'''
-        if self.motor_running:
-            return
-        self.logger.info('Starting motor')
-        # For A1
-        self._serial_port.dtr = False
-        # For A2
-        self.set_pwm(DEFAULT_MOTOR_PWM)
-        self.motor_running = True
+        cmd = SET_PWM_BYTE
 
-    def stop_motor(self):
-        '''Stops sensor motor'''
-        if not self.motor_running:
-            return
-        self.logger.info('Stoping motor')
-        # For A2
-        self.set_pwm(0)
-        time.sleep(.001)
-        # For A1
-        self._serial_port.dtr = True
-        self.motor_running = False
-
-    def _send_payload_cmd(self, cmd, payload):
-        '''Sends `cmd` command with `payload` to the sensor'''
         size = struct.pack('B', len(payload))
         req = SYNC_BYTE + cmd + size + payload
         checksum = 0
         for v in struct.unpack('B'*len(req), req):
             checksum ^= v
         req += struct.pack('B', checksum)
-        self._serial_port.write(req)
-        self.logger.debug('Command sent: %s' % req)
+        self.serial.write(req)
 
-    def _send_cmd(self, cmd):
-        '''Sends `cmd` command to the sensor'''
-        req = SYNC_BYTE + cmd
-        self._serial_port.write(req)
-        self.logger.debug('Command sent: %s' % req)
+    # def start_motor(self):
+    #     '''Starts sensor motor'''
+    #     if self.motor_running:
+    #         return
+    #     # self.logger.info('Starting motor')
+    #     # For A1
+    #     self._serial_port.dtr = False
+    #     # For A2
+    #     self.set_pwm(DEFAULT_MOTOR_PWM)
+    #     self.motor_running = True
+    #
+    # def stop_motor(self):
+    #     '''Stops sensor motor'''
+    #     if not self.motor_running:
+    #         return
+    #     # self.logger.info('Stoping motor')
+    #     # For A2
+    #     self.set_pwm(0)
+    #     time.sleep(.001)
+    #     # For A1
+    #     self._serial_port.dtr = True
+    #     self.motor_running = False
 
-    def _read_descriptor(self):
-        '''Reads descriptor packet'''
-        descriptor = self._serial_port.read(DESCRIPTOR_LEN)
-        self.logger.debug('Recieved descriptor: %s', descriptor)
-        if len(descriptor) != DESCRIPTOR_LEN:
-            raise RPLidarException('Descriptor length mismatch')
-        elif not descriptor.startswith(SYNC_BYTE + SYNC_BYTE2):
-            raise RPLidarException('Incorrect descriptor starting bytes')
-        is_single = _b2i(descriptor[-2]) == 0
-        return _b2i(descriptor[2]), is_single, _b2i(descriptor[-1])
+    def motor(self, value):
+        if value:
+            # if self.motor_running:
+            #     return
+            # For A1
+            self.serial.dtr = False
+            # For A2
+            self.set_pwm(DEFAULT_MOTOR_PWM)
+            # self.motor_running = True
+        else:
+            # if not self.motor_running:
+            #     return
+            # self.logger.info('Stoping motor')
+            # For A2
+            self.set_pwm(0)
+            time.sleep(.001)
+            # For A1
+            self.serial.dtr = True
+            # self.motor_running = False
 
-    def _read_response(self, dsize):
-        '''Reads response packet with length of `dsize` bytes'''
-        self.logger.debug('Trying to read response: %d bytes', dsize)
-        data = self._serial_port.read(dsize)
-        self.logger.debug('Recieved data: %s', data)
-        if len(data) != dsize:
-            raise RPLidarException('Wrong body size')
-        return data
+    # def _send_payload_cmd(self, cmd, payload):
+    #     '''Sends `cmd` command with `payload` to the sensor'''
+    #     size = struct.pack('B', len(payload))
+    #     req = SYNC_BYTE + cmd + size + payload
+    #     checksum = 0
+    #     for v in struct.unpack('B'*len(req), req):
+    #         checksum ^= v
+    #     req += struct.pack('B', checksum)
+    #     self._serial_port.write(req)
 
     def info(self):
-        self.get_info()
-
-    def get_info(self):
         '''Get device information
 
         Returns
@@ -227,7 +247,10 @@ class RPLidar(object):
         dict
             Dictionary with the sensor information
         '''
-        self._send_cmd(GET_INFO_BYTE)
+        msg = [0xA5, 0x50]
+        dmsg = pack('2B', *msg)
+        self.serial.write(dmsg)
+        # self._send_cmd(GET_INFO_BYTE)
         dsize, is_single, dtype = self._read_descriptor()
         if dsize != INFO_LEN:
             raise RPLidarException('Wrong get_info reply length')
@@ -236,17 +259,24 @@ class RPLidar(object):
         if dtype != INFO_TYPE:
             raise RPLidarException('Wrong response data type')
         raw = self._read_response(dsize)
+        d = unpack('20B', raw)
         serialnumber = codecs.encode(raw[4:], 'hex').upper()
         serialnumber = codecs.decode(serialnumber, 'ascii')
+        # data = {
+        #     'model': _b2i(raw[0]),
+        #     'firmware': (_b2i(raw[2]), _b2i(raw[1])),
+        #     'hardware': _b2i(raw[3]),
+        #     'serialnumber': serialnumber,
+        # }
         data = {
-            'model': _b2i(raw[0]),
-            'firmware': (_b2i(raw[2]), _b2i(raw[1])),
-            'hardware': _b2i(raw[3]),
+            'model': d[0],
+            'firmware': (d[2], d[1]),
+            'hardware': d[3],
             'serialnumber': serialnumber,
         }
         return data
 
-    def get_health(self):
+    def health(self):
         '''Get device health state. When the core system detects some
         potential risk that may cause hardware failure in the future,
         the returned status value will be 'Warning'. But sensor can still work
@@ -274,115 +304,50 @@ class RPLidar(object):
         error_code = (_b2i(raw[1]) << 8) + _b2i(raw[2])
         return status, error_code
 
-    # def clear_input(self):
-    #     '''Clears input buffer by reading all available data'''
-    #     self._serial_port.read_all()
-
     def stop(self):
         '''Stops scanning process, disables laser diode and the measurment
         system, moves sensor to the idle state.'''
-        self.logger.info('Stoping scanning')
-        self._send_cmd(STOP_BYTE)
-        time.sleep(.001)
+        # self.logger.info('Stoping scanning')
+        # self._send_cmd(STOP_BYTE)
+        # time.sleep(.001)
+
+        msg = [0xa5, 0x25]
+        msg = pack('2B', *msg)
+        self.serial.write(msg)
+        time.sleep(0.1)
+
+        self.motor(False)
         # self.clear_input()
-        self._serial_port.read_all()
+        # self._serial_port.read_all()
 
     def reset(self):
-        '''Resets sensor core, reverting it to a similar state as it has
-        just been powered up.'''
-        self.logger.info('Reseting the sensor')
-        self._send_cmd(RESET_BYTE)
-        time.sleep(.002)
+        """
+        Resets sensor core, reverting it to a similar state as it has
+        just been powered up. Should return something like this:
 
-    def iter_measurments(self, max_buf_meas=500):
-        '''Iterate over measurments. Note that consumer must be fast enough,
-        otherwise data will be accumulated inside buffer and consumer will get
-        data with increaing lag.
-
-        Parameters
-        ----------
-        max_buf_meas : int
-            Maximum number of measurments to be stored inside the buffer. Once
-            numbe exceeds this limit buffer will be emptied out.
-
-        Yields
-        ------
-        new_scan : bool
-            True if measurment belongs to a new scan
-        quality : int
-            Reflected laser pulse strength
-        angle : float
-            The measurment heading angle in degree unit [0, 360)
-        distance : float
-            Measured object distance related to the sensor's rotation center.
-            In millimeter unit. Set to 0 when measurment is invalid.
-        '''
-        self.start_motor()
-        status, error_code = self.get_health()
-        self.logger.debug('Health status: %s [%d]', status, error_code)
-        if status == _HEALTH_STATUSES[2]:
-            self.logger.warning('Trying to reset sensor due to the error. '
-                                'Error code: %d', error_code)
-            self.reset()
-            status, error_code = self.get_health()
-            if status == _HEALTH_STATUSES[2]:
-                raise RPLidarException('RPLidar hardware failure. '
-                                       'Error code: %d' % error_code)
-        elif status == _HEALTH_STATUSES[1]:
-            self.logger.warning('Warning sensor status detected! '
-                                'Error code: %d', error_code)
-        cmd = SCAN_BYTE
-        self._send_cmd(cmd)
-        dsize, is_single, dtype = self._read_descriptor()
-        if dsize != 5:
-            raise RPLidarException('Wrong get_info reply length')
-        if is_single:
-            raise RPLidarException('Not a multiple response mode')
-        if dtype != SCAN_TYPE:
-            raise RPLidarException('Wrong response data type')
-        while True:
-            raw = self._read_response(dsize)
-            self.logger.debug('Recieved scan response: %s' % raw)
-            if max_buf_meas:
-                data_in_buf = self._serial_port.in_waiting
-                if data_in_buf > max_buf_meas*dsize:
-                    self.logger.warning(
-                        'Too many measurments in the input buffer: %d/%d. '
-                        'Clearing buffer...',
-                        data_in_buf//dsize, max_buf_meas)
-                    self._serial_port.read(data_in_buf//dsize*dsize)
-            yield _process_scan(raw)
-
-    def iter_scans(self, max_buf_meas=500, min_len=5):
-        '''Iterate over scans. Note that consumer must be fast enough,
-        otherwise data will be accumulated inside buffer and consumer will get
-        data with increasing lag.
-
-        Parameters
-        ----------
-        max_buf_meas : int
-            Maximum number of measurments to be stored inside the buffer. Once
-            numbe exceeds this limit buffer will be emptied out.
-        min_len : int
-            Minimum number of measurments in the scan for it to be yelded.
-
-        Yields
-        ------
-        scan : list
-            List of the measurments. Each measurment is tuple with following
-            format: (quality, angle, distance). For values description please
-            refer to `iter_measurments` method's documentation.
-        '''
-        scan = []
-        iterator = self.iter_measurments(max_buf_meas)
-        for new_scan, quality, angle, distance in iterator:
-            if new_scan:
-                if len(scan) > min_len:
-                    # scan = list(reversed(scan))
-                    yield scan
-                scan = []
-            if quality > 0 and distance > 0:
-                scan.append((quality, angle, distance))
+        RP LIDAR System.
+        Firmware Ver 1.24 - rc0, HW Ver 5
+        Model: 18
+        """
+        msg = [0xa5, 0x40]
+        msg = pack('2B', *msg)
+        self.serial.write(msg)
+        time.sleep(0.1)
+        # data = self.serial.read(1024)  # first byte is 0xA5/165 and second is 0x40/64
+        # offset = 0
+        # # print(data)
+        #
+        # b = unpack('{}B'.format(len(data)), data)
+        # # print(b)
+        #
+        # for i, p in enumerate(b):
+        #     if p == 82 and b[i+1] == 80:
+        #         offset = i
+        # data = data[offset:]
+        # # print('offset', offset)
+        # # print('>> ',len(data))
+        # print('reboot data[{}]========\n{}\n========================'.format(len(data), data.decode('utf8')))
+        time.sleep(1)
 
     def get(self, max_buf_meas=500):
         '''Iterate over measurments. Note that consumer must be fast enough,
@@ -407,48 +372,136 @@ class RPLidar(object):
             Measured object distance related to the sensor's rotation center.
             In millimeter unit. Set to 0 when measurment is invalid.
         '''
+        while not self.new_scan:
+            time.sleep(0.001)
+        self.new_scan = False
+        return self.scan
+
+    def update(self):
+        # max_buf_meas=500  # ??
         self.start_motor()
-        status, error_code = self.get_health()
-        self.logger.debug('Health status: %s [%d]', status, error_code)
-        if status == _HEALTH_STATUSES[2]:
-            self.logger.warning('Trying to reset sensor due to the error. '
-                                'Error code: %d', error_code)
-            self.reset()
-            status, error_code = self.get_health()
-            if status == _HEALTH_STATUSES[2]:
-                raise RPLidarException('RPLidar hardware failure. '
-                                       'Error code: %d' % error_code)
-        elif status == _HEALTH_STATUSES[1]:
-            self.logger.warning('Warning sensor status detected! '
-                                'Error code: %d', error_code)
-        cmd = SCAN_BYTE
-        self._send_cmd(cmd)
-        dsize, is_single, dtype = self._read_descriptor()
-        if dsize != 5:
-            raise RPLidarException('Wrong get_info reply length')
-        if is_single:
-            raise RPLidarException('Not a multiple response mode')
-        if dtype != SCAN_TYPE:
-            raise RPLidarException('Wrong response data type')
+        self.reset()
+        self.serial.reset_input_buffer()
+        msg = [0xa5, 0x20]
+        msg = pack('2B', *msg)
+        self.serial.write(msg)
+        time.sleep(0.001)
 
-        scan = []
-        done = False
-        while not done:
-            raw = self._read_response(dsize)
-            self.logger.debug('Recieved scan response: %s' % raw)
-            if max_buf_meas:
-                data_in_buf = self._serial_port.in_waiting
-                if data_in_buf > max_buf_meas*dsize:
-                    self.logger.warning(
-                        'Too many measurments in the input buffer: %d/%d. '
-                        'Clearing buffer...',
-                        data_in_buf//dsize, max_buf_meas)
-                    self._serial_port.read(data_in_buf//dsize*dsize)
-            iterator = _process_scan(raw)
+        self.scan = [(0,0,)]*360
+        # done = False
+        while not self.shutdown:
+            raw = self.serial.read(1024)
+            print('read', len(raw))
+            data = unpack('{}B'.format(len(raw)), raw)
+            offset = 0
+            # print('data', data)
+            while len(data[offset:]) >= 12:
+                if data[offset:offset+7] == (0xa5,0x5a,0x05,0,0,0x40,0x81,):
+                    print("==[header found]==")
+                    offset += 7
+                    size_pkt = len(data[offset:])
+                    while (offset + 5) <= size_pkt:
+                        pkt = data[offset:offset+5]
+                        start = ((1 & pkt[0]) == 1)
+                        if start:
+                            print("====[start]==================================")
+                        q = (pkt[0] >> 2)
+                        angle = ((pkt[2] << 7) + (pkt[1] >> 1))/64
+                        dist = (pkt[4] << 8) + pkt[3]
+                        offset += 5
+                        print('range',angle, dist, q)
+                else:
+                    # print([hex(x) for x in data[offset:offset+7]])
+                    offset += 1
 
-            for new_scan, quality, angle, distance in iterator:
-                if new_scan:
-                    done = True
-                if quality > 0 and distance > 0:
-                    scan.append((quality, angle, distance))
-        return scan.reverse()
+            print('buffer clear')
+
+    def getscan(self, data):
+        """
+        Once the header packet is found, this functions pulls the measurements
+        until it runs out of usable bytes.
+
+        return: left over bytes
+        """
+        offset = 0
+        len_data = len(data)
+        while (offset + 5) <= len_data:
+            pkt = data[offset:offset+5]
+            start = ((1 & pkt[0]) == 1)
+            if start:
+                print("====[start]==================================")
+                self.scan = [(0,0,)]*360
+                self.new_scan = True
+            chkS = (((pkt[0] & 2) >> 1) != (1 & pkt[0]))
+            if not chkS:
+                # print(((pkt[0] & 2) >> 1))
+                # print(1 & pkt[0])
+                # raise Exception('S')
+                print('S')
+                offset += 5
+                continue
+            if not (pkt[1] & 1):
+                # raise Exception('C')
+                print('C')
+                offset += 5
+                continue
+            q = (pkt[0] >> 2)
+            angle = ((pkt[2] << 7) + (pkt[1] >> 1))/64
+            dist = ((pkt[4] << 8) + pkt[3])/4  # mm
+            offset += 5
+            # print('range',angle, dist, q)
+            self.scan[int(angle)] = (angle, dist)
+
+        return data[offset:]
+
+    def update2(self):
+        # max_buf_meas=500  # ??
+        self.motor(True)
+        self.reset()
+        self.serial.reset_input_buffer()
+        msg = [0xa5, 0x20]
+        msg = pack('2B', *msg)
+        self.serial.write(msg)
+        time.sleep(0.001)
+
+        self.scan = [(0,0,)]*360
+        # done = False
+
+        raw = self.serial.read(1024)
+        print('read', len(raw))
+        data = unpack('{}B'.format(len(raw)), raw)
+        offset = 0
+        data_len = len(data)
+
+        # find header
+        while True:
+            if data[offset:offset+7] == (0xa5,0x5a,0x05,0,0,0x40,0x81,):
+                print("==[header found]==")
+                offset += 7
+                break
+            # print([hex(x) for x in data[offset:offset+7]])
+            offset += 1
+            if (offset+7) > data_len:
+                print('offset', offset, 'send scan again')
+                # raise Exception("out of data")
+                msg = [0xa5, 0x20]
+                msg = pack('2B', *msg)
+                self.serial.write(msg)
+                time.sleep(0.001)
+
+                raw = self.serial.read(1024)
+                print('read', len(raw))
+                data = unpack('{}B'.format(len(raw)), raw)
+                offset = 0
+                data_len = len(data)
+
+        # get scan packets
+        while not self.shutdown:
+            rest = self.getscan(data[offset:])
+
+            raw = self.serial.read(1024)
+            print('read', len(raw))
+            data = rest + unpack('{}B'.format(len(raw)), raw)
+            offset = 0
+
+            print('buffer clear')
