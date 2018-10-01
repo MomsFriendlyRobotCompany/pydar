@@ -1,4 +1,27 @@
+'''Simple and lightweight module for working with RPLidar rangefinder scanners.
 
+Usage example:
+
+>>> from rplidar import RPLidar
+>>> lidar = RPLidar('/dev/ttyUSB0')
+>>>
+>>> info = lidar.get_info()
+>>> print(info)
+>>>
+>>> health = lidar.get_health()
+>>> print(health)
+>>>
+>>> for i, scan in enumerate(lidar.iter_scans()):
+...  print('%d: Got %d measurments' % (i, len(scan)))
+...  if i > 10:
+...   break
+...
+>>> lidar.stop()
+>>> lidar.stop_motor()
+>>> lidar.disconnect()
+
+For additional information please refer to the RPLidar class documentation.
+'''
 # import logging
 import sys
 import time
@@ -70,12 +93,12 @@ class RPLidar(object):
 
     # serial = None  #: serial port connection
     # port = ''  #: Serial port name, e.g. /dev/ttyUSB0
-    timeout = 1  #: Serial port timeout
+    # timeout = 1  #: Serial port timeout
     # motor = False  #: Is motor running?
-    baudrate = 115200  #: Baudrate for serial port
+    # baudrate = 115200  #: Baudrate for serial port
 
     # def __init__(self, port, baudrate=115200, timeout=1, logger=None):
-    def __init__(self):
+    def __init__(self, logger=None):
         '''Initilize RPLidar object for communicating with the sensor.
 
         Parameters
@@ -120,7 +143,7 @@ class RPLidar(object):
         t.start()
         return
 
-    def open(self, port):
+    def open(self, port, baudrate=115200, timeout=1):
         '''Connects to the serial port with the name `self.port`. If it was
         connected to another serial port disconnects from it first.'''
         if self.serial:
@@ -128,12 +151,13 @@ class RPLidar(object):
         try:
             self.serial = serial.Serial(
                 port,
-                self.baudrate,
-                # parity=serial.PARITY_NONE,
-                # stopbits=serial.STOPBITS_ONE,
-                timeout=self.timeout,
-                dsrdtr=False)
+                baudrate,
+                parity=serial.PARITY_NONE,
+                stopbits=serial.STOPBITS_ONE,
+                timeout=timeout,
+                dsrdtr=True)
 
+            # self.serial = self.serial
         except serial.SerialException as err:
             raise RPLidarException('Failed: %s' % err)
         # self.reset()
@@ -225,10 +249,9 @@ class RPLidar(object):
         dict
             Dictionary with the sensor information
         '''
-        # msg = [0xA5, 0x50]
-        # dmsg = pack('2B', *msg)
-        # self.serial.write(dmsg)
-        self.write([0xA5, 0x50])
+        msg = [0xA5, 0x50]
+        dmsg = pack('2B', *msg)
+        self.serial.write(dmsg)
         # self._send_cmd(GET_INFO_BYTE)
         dsize, is_single, dtype = self._read_descriptor()
         if dsize != INFO_LEN:
@@ -290,25 +313,14 @@ class RPLidar(object):
         # self._send_cmd(STOP_BYTE)
         # time.sleep(.001)
 
-        # msg = [0xa5, 0x25]
-        # msg = pack('2B', *msg)
-        # self.serial.write(msg)
-        self.write([0xa5, 0x25])
+        msg = [0xa5, 0x25]
+        msg = pack('2B', *msg)
+        self.serial.write(msg)
         time.sleep(0.1)
 
         self.motor(False)
         # self.clear_input()
         # self.serial.read_all()
-
-    def write(self, msg):
-        msg = pack('B'*len(msg), *msg)
-        self.serial.write(msg)
-
-    def read(self, many=1024):
-        raw = self.serial.read(many)
-        print('read', len(raw))
-        data = unpack('B'*len(raw), raw)
-        return data
 
     def reset(self):
         """
@@ -319,11 +331,10 @@ class RPLidar(object):
         Firmware Ver 1.24 - rc0, HW Ver 5
         Model: 18
         """
-        # msg = [0xa5, 0x40]
-        # msg = pack('2B', *msg)
-        # self.serial.write(msg)
-        self.write([0xa5, 0x40])
-        time.sleep(0.5)
+        msg = [0xa5, 0x40]
+        msg = pack('2B', *msg)
+        self.serial.write(msg)
+        time.sleep(0.1)
         # data = self.serial.read(1024)  # first byte is 0xA5/165 and second is 0x40/64
         # offset = 0
         # # print(data)
@@ -338,7 +349,7 @@ class RPLidar(object):
         # # print('offset', offset)
         # # print('>> ',len(data))
         # print('reboot data[{}]========\n{}\n========================'.format(len(data), data.decode('utf8')))
-        # time.sleep(1)
+        time.sleep(1)
 
     def get(self, max_buf_meas=500):
         '''Iterate over measurments. Note that consumer must be fast enough,
@@ -368,6 +379,45 @@ class RPLidar(object):
         self.new_scan = False
         return self.scan
 
+    def update(self):
+        # max_buf_meas=500  # ??
+        self.start_motor()
+        self.reset()
+        self.serial.reset_input_buffer()
+        msg = [0xa5, 0x20]
+        msg = pack('2B', *msg)
+        self.serial.write(msg)
+        time.sleep(0.001)
+
+        self.scan = [(0,0,)]*360
+        # done = False
+        while not self.shutdown:
+            raw = self.serial.read(1024)
+            print('read', len(raw))
+            data = unpack('{}B'.format(len(raw)), raw)
+            offset = 0
+            # print('data', data)
+            while len(data[offset:]) >= 12:
+                if data[offset:offset+7] == (0xa5,0x5a,0x05,0,0,0x40,0x81,):
+                    print("==[header found]==")
+                    offset += 7
+                    size_pkt = len(data[offset:])
+                    while (offset + 5) <= size_pkt:
+                        pkt = data[offset:offset+5]
+                        start = ((1 & pkt[0]) == 1)
+                        if start:
+                            print("====[start]==================================")
+                        q = (pkt[0] >> 2)
+                        angle = ((pkt[2] << 7) + (pkt[1] >> 1))/64
+                        dist = (pkt[4] << 8) + pkt[3]
+                        offset += 5
+                        print('range',angle, dist, q)
+                else:
+                    # print([hex(x) for x in data[offset:offset+7]])
+                    offset += 1
+
+            print('buffer clear')
+
     def getscan(self, data):
         """
         Once the header packet is found, this functions pulls the measurements
@@ -389,12 +439,12 @@ class RPLidar(object):
                 # print(((pkt[0] & 2) >> 1))
                 # print(1 & pkt[0])
                 # raise Exception('S')
-                print('S error')
+                print('S')
                 offset += 5
                 continue
             if not (pkt[1] & 1):
                 # raise Exception('C')
-                print('C error')
+                print('C')
                 offset += 5
                 continue
             q = (pkt[0] >> 2)
@@ -411,19 +461,17 @@ class RPLidar(object):
         self.motor(True)
         self.reset()
         self.serial.reset_input_buffer()
-        # msg = [0xa5, 0x20]
-        # msg = pack('2B', *msg)
-        # self.serial.write(msg)
-        self.write([0xa5, 0x20])
+        msg = [0xa5, 0x20]
+        msg = pack('2B', *msg)
+        self.serial.write(msg)
         time.sleep(0.001)
 
         self.scan = [(0,0,)]*360
         # done = False
 
-        # raw = self.serial.read(1024)
-        # print('read', len(raw))
-        # data = unpack('{}B'.format(len(raw)), raw)
-        data = self.read()
+        raw = self.serial.read(1024)
+        print('read', len(raw))
+        data = unpack('{}B'.format(len(raw)), raw)
         offset = 0
         data_len = len(data)
 
@@ -438,16 +486,14 @@ class RPLidar(object):
             if (offset+7) > data_len:
                 print('offset', offset, 'send scan again')
                 # raise Exception("out of data")
-                # msg = [0xa5, 0x20]
-                # msg = pack('2B', *msg)
-                # self.serial.write(msg)
-                self.write([0xa5, 0x20])
+                msg = [0xa5, 0x20]
+                msg = pack('2B', *msg)
+                self.serial.write(msg)
                 time.sleep(0.001)
 
-                # raw = self.serial.read(1024)
-                # print('read', len(raw))
-                # data = unpack('{}B'.format(len(raw)), raw)
-                data = self.read()
+                raw = self.serial.read(1024)
+                print('read', len(raw))
+                data = unpack('{}B'.format(len(raw)), raw)
                 offset = 0
                 data_len = len(data)
 
@@ -455,10 +501,9 @@ class RPLidar(object):
         while not self.shutdown:
             rest = self.getscan(data[offset:])
 
-            # raw = self.serial.read(1024)
-            # print('read', len(raw))
-            # data = rest + unpack('{}B'.format(len(raw)), raw)
-            data = rest + self.read()
+            raw = self.serial.read(1024)
+            print('read', len(raw))
+            data = rest + unpack('{}B'.format(len(raw)), raw)
             offset = 0
 
             print('buffer clear')
