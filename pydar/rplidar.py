@@ -89,7 +89,7 @@ class RPLidar(object):
         logger : logging.Logger instance, optional
             Logger instance, if none is provided new instance is created
         '''
-        # self.serial = None
+        self.serial = None
         # self.port = port
         # self.baudrate = baudrate
         # self.timeout = timeout
@@ -134,6 +134,8 @@ class RPLidar(object):
                 timeout=self.timeout,
                 dsrdtr=False)
 
+            self.motor(False)
+
         except serial.SerialException as err:
             raise RPLidarException('Failed: %s' % err)
         # self.reset()
@@ -142,7 +144,8 @@ class RPLidar(object):
         '''Disconnects from the serial port'''
         self.stop()
         self.shutdown = True
-        time.sleep(0.1)
+        # self.motor(False)
+        # time.sleep(2)
         if self.serial.is_open:
             self.serial.close()
             self.serial = None
@@ -194,15 +197,16 @@ class RPLidar(object):
             # For A1
             self.serial.dtr = False
             # For A2
-            self.set_pwm(DEFAULT_MOTOR_PWM)
+            # self.set_pwm(DEFAULT_MOTOR_PWM)
+            # self.set_pwm(0)
             # self.motor_running = True
         else:
             # if not self.motor_running:
             #     return
             # self.logger.info('Stoping motor')
             # For A2
-            self.set_pwm(0)
-            time.sleep(.001)
+            # self.set_pwm(0)
+            # time.sleep(.001)
             # For A1
             self.serial.dtr = True
             # self.motor_running = False
@@ -402,7 +406,15 @@ class RPLidar(object):
             dist = ((pkt[4] << 8) + pkt[3])/4  # mm
             offset += 5
             # print('range',angle, dist, q)
-            self.scan[int(angle)] = (angle, dist)
+            try:
+                index = int(round(angle))
+                if index >= 360:
+                    index = 0
+                self.scan[index] = (angle, dist)
+            except Exception as e:
+                print(e)
+                print('angle:', angle, int(round(angle)))
+                exit(1)
 
         return data[offset:]
 
