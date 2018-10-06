@@ -45,6 +45,9 @@ class ScanData(Structure):
         ("len", c_int),
         ("data", ctypes.POINTER(ctypes.c_double))
     ]
+    def __str__(self):
+        fmt = 'ScanData[{}]\n  {}\n'.format(self.len, self.data)
+        return fmt
 # me = os.path.abspath(os.path.dirname(__file__))
 # libpath = os.path.join(me, "..", "libtest.so")
 
@@ -68,17 +71,28 @@ pydarlib = ctypes.cdll.LoadLibrary(libdir + '/' + libname)
 class YDLidar(object):
     def __init__(self):
         # self.scan =  np.array([(0,0) for _ in range(360)])
-        self.scan =  np.array([0] * 2 * 360)
+        self.raw =  np.zeros(2*360,np.float)  #np.array([0.0] * 2 * 360)
         self.data = ScanData(
-            c_int(len(self.scan)),
-            np.ctypeslib.as_ctypes(self.scan)
+            c_int(len(self.raw)),
+            np.ctypeslib.as_ctypes(self.raw)
         )
+        self.scan = []
         # pydarlib.get_data.restype = None
 
     def get(self):
         pydarlib.get_data.restype = None
         pydarlib.get_data(ctypes.byref(self.data))
-        return self.data
+
+        self.scan = []
+        for i in range(360):
+            angle = self.raw[2*i]
+            dist = self.raw[2*i+1]
+            self.scan.append((angle, dist,))
+
+        return self.scan
 
 y = YDLidar()
-print(y.get())
+print('*'*40)
+for _ in range(3):
+    d = y.get()
+    print(d)
