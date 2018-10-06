@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+
 # https://stackoverflow.com/questions/5081875/ctypes-beginner
 # https://docs.python-guide.org/scenarios/clibs/
 # https://cvstuff.wordpress.com/2014/11/27/wraping-c-code-with-python-ctypes-memory-and-pointers/
@@ -27,42 +29,56 @@ c_wchar_p    wchar_t *    unicode
 
 import os.path
 import ctypes
+from ctypes import c_int, c_double
 import numpy.ctypeslib as ctl
 import numpy as np
 
 from ctypes import Structure
 
+# class ScanData(Structure):
+#     _fields_ = [
+#         ("len", c_int),
+#         ("data", c_double * 2 * 360)
+#     ]
 class ScanData(Structure):
     _fields_ = [
         ("len", c_int),
-        ("data", (c_double * 2) * 360)
+        ("data", ctypes.POINTER(ctypes.c_double))
     ]
+# me = os.path.abspath(os.path.dirname(__file__))
+# libpath = os.path.join(me, "..", "libtest.so")
 
-me = os.path.abspath(os.path.dirname(__file__))
-libpath = os.path.join(me, "..", "libtest.so")
-
-libname = 'pydarlib.so'
-libdir = './'
-pydarlib = ctypes.CDLL(libdir + libname)
+libname = 'libpydarlib.dylib'
+libdir = './build'
+# pydarlib = ctypes.CDLL(libdir + '/' + libname)
 # lib=ctl.load_library(libname, libdir)
 
 # who owns the array and clears it?
 # better to pass an array to the function, then python owns it
-pydarlib = ctypes.CDLL(libdir + libname).function
-pydarlib.restype = ctypes.POINTER(ctypes.c_float*2*360)
+# pydarlib = ctypes.CDLL(libdir+ '/' + libname).function
+# pydarlib.restype = ctypes.POINTER(ctypes.c_float*2*360)
 
 
 # http://www.ifnamemain.com/posts/2013/Dec/10/c_structs_python/
-pydarlib = ctypes.cdll.LoadLibrary(libdir + libname)
-pydarlib.get.restype = None
+pydarlib = ctypes.cdll.LoadLibrary(libdir + '/' + libname)
+# pydarlib.get_data.restype = None
 # scan =  np.array([(0,0) for _ in range(360)])
 # data = ScanData(len(scan), np.cytpeslib.as_ctypes(scan))
 
-class YDLidar(class):
+class YDLidar(object):
     def __init__(self):
-        self.scan =  np.array([(0,0) for _ in range(360)])
-        self.data = ScanData(len(self.scan), np.cytpeslib.as_ctypes(self.scan))
+        # self.scan =  np.array([(0,0) for _ in range(360)])
+        self.scan =  np.array([0] * 2 * 360)
+        self.data = ScanData(
+            c_int(len(self.scan)),
+            np.ctypeslib.as_ctypes(self.scan)
+        )
+        # pydarlib.get_data.restype = None
 
     def get(self):
-        pydarlib.get(ctypes.byref(self.data))
+        pydarlib.get_data.restype = None
+        pydarlib.get_data(ctypes.byref(self.data))
         return self.data
+
+y = YDLidar()
+print(y.get())
