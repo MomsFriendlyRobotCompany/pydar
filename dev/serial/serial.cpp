@@ -11,9 +11,10 @@ int main(void){
     cout << "start" << endl;
 
     string port = "/dev/tty.SLAB_USBtoUART";
+    // string port = "/dev/tty.usbserial-AL034G2K";
 
     Serial s = Serial();
-    s.open(port, 115200);  // ydlidar speed
+    s.open(port, 128000);  // ydlidar speed
     if (s.isOpen()) printf(">> opened\n");
     else printf(">> couldn't open\n");
 
@@ -22,14 +23,19 @@ int main(void){
     // delay(2000);
     // s.dtr(false);
 
+    // reset
+    uint8_t restart[2] = {0xA5, 0x40};
+    s.write(restart, 2, 1);
+    delay(10);
+
     // info
     uint8_t info[2] = {0xA5, 0x90};
-    s.write2(info, 2, 1);
+    s.write(info, 2, 1);
+    delay(10);
 
-    uint8_t health[2] = {0xA5, 0x92};
+    // uint8_t health[2] = {0xA5, 0x91};
     // s.write2(health, 2, 1);
-
-    delay(1000);
+    // delay(10);
 
     // cout << "input buffer: " << s.inWaiting() << endl;
 
@@ -38,8 +44,8 @@ int main(void){
     uint8_t buffer[buf_size];
     memset(buffer, 0, buf_size);
     // for(int i=0; i<buf_size; ++i) printf ("0x%02X ", buffer[i]);
-    int num = s.read2(buffer, buf_size, 5);
-    if (num) cout << "buffer " << num << " " << std::hex << buffer << endl;
+    int num = s.read(buffer, buf_size, 5);
+    if (num) printHex("response", buffer, num);
     else cout << "crap, noting" << endl;
 
     s.close();

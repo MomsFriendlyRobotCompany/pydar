@@ -11,7 +11,7 @@ set(DEFAULT_BUILD_TYPE "Release")
 find_package(Threads REQUIRED)
 
 # or STATIC
-add_executable(${PROJECT_NAME} serial.cpp imp.cpp)
+add_executable(${PROJECT_NAME} serial.cpp imp.cpp lidar.cpp)
 target_link_libraries(${PROJECT_NAME} ${CMAKE_THREAD_LIBS_INIT})
 # set_target_properties(${PROJECT_NAME} PROPERTIES VERSION ${PROJECT_VERSION})
 # install(TARGETS ${PROJECT_NAME} DESTINATION lib/${PROJECT_NAME})

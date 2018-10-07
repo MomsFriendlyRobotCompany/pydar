@@ -20,6 +20,7 @@
 // ms: miliseconds
 // return: None
 void delay(uint16_t ms);
+void printHex(std::string msg, uint8_t* buf, const int len);
 
 
 const uint16_t buf_size = 1024;
@@ -33,11 +34,11 @@ protected:
 public:
     Serial();
     ~Serial();
-    void open(std::string port, uint64_t speed);
+    void open(std::string port, uint32_t speed);
     void close();
     // void write(uint8_t* buffer, uint16_t size);
-    int write2(uint8_t* buf, const int numbytes, const int trys);
-    int read2(uint8_t* buf, const int numbytes, const int trys);
+    int write(uint8_t* buf, const int numbytes, const int trys);
+    int read(uint8_t* buf, const uint32_t numbytes, const uint8_t trys);
     // uint16_t read(uint8_t* buffer, uint32_t size);
     // uint16_t read();  // reads into internal buffer
     int inWaiting();

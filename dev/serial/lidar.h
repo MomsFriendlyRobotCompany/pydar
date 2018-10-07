@@ -4,7 +4,7 @@
 
 #include <iostream>
 #include <thread>
-
+#include "imp.h"
 #include <math.h>
 
 inline double deg2rad(double d){ return d*M_PI/180.0; }
@@ -17,25 +17,60 @@ unsigned int ranges:
 2**64 = 18446744073709551616
 */
 
+/*
+use case
+
+lidar = Lidar()
+lidar.start("/dev/serial0") // create thread
+while(run){
+    lidar.get()
+}
+lidar.stop()
+*/
+
 #ifndef __cplusplus
 #error "This requires a C++ compiler"
 #endif
 
+typedef struct ScanData{
+    int len;
+    double *data;
+} ScanData;
 
-class Lidar {
+
+class YDLidar {
 public:
-    Lidar();
-    ~Lidar();
-    void start(std::string port);
-    void stop(void);
-    string info();
+    // commands for lidar
+    enum Command {
+        SCAN,
+        STOP,
+        INFO,
+        HEALTH,
+        RESTART
+    };
+
+    YDLidar(std::string port);
+    ~YDLidar();
+    void start(void);              // start serial thread
+    void stop(void);               // stop serial thread
+    bool sendCmd(Command cmd);     // send command to lidar
+    void motor(bool val);          // turn motor on/off
+    void get(ScanData* data);      // get scan data
+    // void restart(void);
+    // string info();
 
 protected:
-    void loop(void);
+    void loop(void);              // thread loop
+    void decode(uint8_t* bytes);  // decode raw data into scan data
 
-    uint8_t raw[1024];
-    double scan_raw[360*2];
+    uint8_t raw[1024];       // raw data buffer
+    double scan_raw[360*2];  // scan data
     std::thread lidar_thread;
+    std::mutex data_mutex;
+    Serial serial;
+    bool is_shutdown;
+    std::string port;
+    uint32_t baudrate;
 };
 
 #endif
