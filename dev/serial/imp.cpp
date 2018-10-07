@@ -85,7 +85,7 @@ void Serial::open(string port, uint64_t speed){
     fd = ::open(port.c_str(),
         O_RDWR |
         O_NOCTTY |
-        O_NDELAY  |
+        // O_NDELAY  |
         O_NONBLOCK
     ); // | O_NDELAY
 
@@ -107,54 +107,89 @@ void Serial::open(string port, uint64_t speed){
     struct termios options;
 
     // get config from fd and put into options
-    tcgetattr (fd, &options);
+    if (tcgetattr(fd, &options) == -1){
+        printf("couldn't get port options");
+        return;
+    }
+
+    // cout << options << endl;
 
     // Enable the receiver and set local mode
     // options.c_cflag |= (CLOCAL | CREAD);
 
     // set up raw mode / no echo / binary
     options.c_cflag |= (tcflag_t)  (CLOCAL | CREAD);
-    options.c_lflag &= (tcflag_t) ~(ICANON | ECHO | ECHOE | ECHOK | ECHONL | ISIG | IEXTEN); //|ECHOPRT
-
-    options.c_oflag &= (tcflag_t) ~(OPOST);
-    options.c_iflag &= (tcflag_t) ~(INLCR | IGNCR | ICRNL | IGNBRK);
+    // options.c_lflag &= (tcflag_t) ~(ICANON | ECHO | ECHOE | ECHOK | ECHONL | ISIG | IEXTEN); //|ECHOPRT
+    //
+    // options.c_oflag &= (tcflag_t) ~(OPOST);
+    // options.c_iflag &= (tcflag_t) ~(INLCR | IGNCR | ICRNL | IGNBRK);
 
     //give raw data path
-    cfmakeraw (&options);
+    // cfmakeraw (&options);
+    // options.c_cflag &= (unsigned long) ~(CRTSCTS);
+    //
+    // // 8N1
+    // options.c_cflag &= ~CSIZE;
+    // options.c_cflag |= CS8;
+    // options.c_cflag &= (tcflag_t) ~(PARENB | PARODD);
+    // options.c_cflag &= (tcflag_t) ~(CSTOPB);
+    //
+    // options.c_lflag &= ~(ICANON|ISIG|IEXTEN|ECHO);
+    // options.c_iflag &= ~(ISTRIP|ICRNL);
+    // options.c_oflag &= ~OPOST;
+
+    // 8N1
+    options.c_cflag &= ~PARENB;
+    options.c_cflag &= ~CSTOPB;
+    options.c_cflag &= ~CSIZE;
+    options.c_cflag |= CS8;
+    // no flow control
+    options.c_cflag &= ~CRTSCTS;
+
+    //toptions.c_cflag &= ~HUPCL; // disable hang-up-on-close to avoid reset
+
+    options.c_cflag |= CREAD | CLOCAL;  // turn on READ & ignore ctrl lines
+    options.c_iflag &= ~(IXON | IXOFF | IXANY); // turn off s/w flow ctrl
+
+    options.c_lflag &= ~(ICANON | ECHO | ECHOE | ISIG); // make raw
+    options.c_oflag &= ~OPOST; // make raw
 
     // no blocking
     options.c_cc[VMIN]  = 0;    // no minimum number of chars to read
-    options.c_cc[VTIME] = 5;    // 0.5 seconds read timeout
+    options.c_cc[VTIME] = 0;    // 5: 0.5 seconds read timeout
 
-    //set baud
-    // cfsetspeed(&options, 128000);
-    #if defined(__APPLE__)
-        speed_t new_baud = static_cast<speed_t> (speed);
-        if(-1 == ioctl (fd, IOSSIOSPEED, &new_baud, 1)){
-            printf("Error setting speed: %lu", new_baud);
-        }
-    #elif defined(__linux__)
-        // cfsetspeed(&options, 128000);
-        struct serial_struct sers;
-        if (-1 == ioctl (fd, TIOCGSERIAL, &sers)){
-            printf("Error getting serial ioctl");
-        }
-
-        // configure
-        sers.custom_divisor = sers.baud_base / static_cast<int> (speed);
-        sers.flags &= ~ASYNC_SPD_MASK;
-        sers.flags |= ASYNC_SPD_CUST;
-
-        // set serial speed
-        if (-1 == ioctl (fd, TIOCSSERIAL, &sers)){
-            printf("Error setting serial ioctl");
-        }
-    #else
-        cfsetspeed(&options, B128000);
-    #endif
+    // set custom baud
+    // #if defined(__APPLE__)
+    //     speed_t new_baud = static_cast<speed_t> (speed);
+    //     if(-1 == ioctl (fd, IOSSIOSPEED, &new_baud, 1)){
+    //         printf("Error setting speed: %lu", new_baud);
+    //     }
+    // #elif defined(__linux__)
+    //     // cfsetspeed(&options, 128000);
+    //     struct serial_struct sers;
+    //     if (-1 == ioctl (fd, TIOCGSERIAL, &sers)){
+    //         printf("Error getting serial ioctl");
+    //     }
+    //
+    //     // configure
+    //     sers.custom_divisor = sers.baud_base / static_cast<int> (speed);
+    //     sers.flags &= ~ASYNC_SPD_MASK;
+    //     sers.flags |= ASYNC_SPD_CUST;
+    //
+    //     // set serial speed
+    //     if (-1 == ioctl (fd, TIOCSSERIAL, &sers)){
+    //         printf("Error setting serial ioctl");
+    //     }
+    // #else
+    //     ::cfsetspeed(&options, B115200);
+    // #endif
+    ::cfsetispeed(&options, B115200);
+    ::cfsetospeed(&options, B115200);
+    // ::cfsetspeed(&options, B115200);
 
     //send options back to fd
-    tcsetattr (fd, TCSANOW, &options);
+    ::tcsetattr(fd, TCSANOW, &options);
+    ::tcsetattr(fd, TCSAFLUSH, &options);
 
     // init(speed);
     // printf("opened\n");
@@ -164,60 +199,6 @@ void Serial::close(){
     if(fd) ::close(fd);
     fd = 0;
 }
-
-// int Serial::init(uint16_t speed){
-//   int err = 0;
-//   struct termios options;
-//   memset (&options, 0, sizeof options);  // clear it
-//
-//   // grab current settings
-//   err = tcgetattr(fd, &options);
-//   if (err != 0){
-//     printf("error reading port options");
-//     return 1;
-//   }
-//
-//   // set input/output speeds
-//   cfsetispeed(&options, speed);
-//   cfsetospeed(&options, speed);
-//
-//   // // no blocking
-//   // options.c_cc[VMIN]  = 0;    // no minimum number of chars to read
-//   // options.c_cc[VTIME] = 5;    // 0.5 seconds read timeout
-//
-//   options.c_iflag &= ~(IXON | IXOFF | IXANY); // shut off xon/xoff ctrl
-//
-//   // 8N1
-//   options.c_cflag &= ~PARENB;
-//   options.c_cflag &= ~CSTOPB;
-//   options.c_cflag &= ~CSIZE;
-//   options.c_cflag |= CS8;
-//
-//   options.c_iflag &= ~IGNBRK;         // disable break processing
-//   options.c_lflag = 0;                // no signaling chars, no echo,
-//                                       // no canonical processing
-//   options.c_oflag = 0;                // no remapping, no delays
-//
-//   // set HW flow control
-//   // options.c_cflag |= CNEW_RTSCTS;
-//
-//   // clear HW flow control
-//   options.c_cflag &= ~CNEW_RTSCTS;
-//
-//   // set port options
-//   err = tcsetattr(fd, TCSANOW, &options);
-//   if (err != 0){
-//     cout << "error setting up port" << endl;
-//     return 1;
-//   }
-//
-//   return 0;
-// }
-
-// void Serial::write(uint8_t* buffer, uint16_t size){
-//     ::write(fd, buffer, sizeof(buffer));
-//     usleep(1000);
-// }
 
 int Serial::write2(uint8_t* buf, const int numbytes, const int trys){
     int i, numwritten = 0, n = 0, numzeroes = 0;
@@ -232,7 +213,6 @@ int Serial::write2(uint8_t* buf, const int numbytes, const int trys){
             printf("write error: %d\n", n);
             return -1;
         }
-
         else if (0 == n){
             numzeroes++;
 
@@ -241,7 +221,7 @@ int Serial::write2(uint8_t* buf, const int numbytes, const int trys){
         else numwritten += n;
     }
 
-    if (true) printHex("write2", buf, numbytes);
+    if (true) printHex("write2", buf, numwritten);
 
     return numwritten;
 }
@@ -266,8 +246,10 @@ int Serial::read2(uint8_t* buf, const int numbytes, const int trys){
         }
         else if (0 == n){
             numzeroes++;
-            if (numzeroes > trys)
+            if (numzeroes > trys){
+                printf("read2: too many tryes\n");
                 break;
+            }
         }
         else numread += n;
     }
