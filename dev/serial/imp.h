@@ -21,6 +21,9 @@
 // return: None
 void delay(uint16_t ms);
 
+
+const uint16_t buf_size = 1024;
+
 class Serial {
 
 protected:
@@ -61,7 +64,7 @@ protected:
     // void rtsdtr(bool val, int pin);  // set/clear the RTS/DTR pin
 
     int fd;             // file descriptor
-    char buffer[1024];  // serial buffer
+    char buffer[buf_size];  // serial buffer
 
 };
 
