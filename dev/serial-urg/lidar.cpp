@@ -18,6 +18,23 @@ using std::mutex;
 std::thread lidar_thread;
 std::mutex data_mutex;
 
+
+// enum Commands {
+//     INFO=0,
+//     START_LASER,
+//     STOP_LASER,
+//     PARAMS
+// };
+
+// uint8_t info[3] = {'V', 'V', '\n'};
+
+uint8_t CommandStrings[4][3] = {
+    {'V', 'V', '\n'},  // info
+    {'B', 'M', '\n'},  // laser on
+    {'Q', 'T', '\n'},  // laser off
+    {'P', 'P', '\n'}   // get parameters
+};
+
 // Convert FSA and LSA to an angular degree
 inline double angle(uint8_t l, uint8_t h){ return (((h >> 1) << 8) + l) / 64.0; }
 
@@ -39,7 +56,7 @@ URGLidar::~URGLidar(){
     // this->is_shutdown = true;
     // motor(false);
     // close();
-    stop();
+    stopThread();
 }
 
 bool URGLidar::init(string port){
@@ -54,75 +71,36 @@ bool URGLidar::init(string port){
     return ret;
 }
 
-void URGLidar::start(){
+void URGLidar::startThread(){
     lidar_thread = std::thread(&URGLidar::loop, this);
 }
 
 
-void URGLidar::stop(){
+void URGLidar::stopThread(){
     this->is_shutdown = true;
     delay(100);
 }
 
-void URGLidar::decode(uint8_t* bytes){
-    ;
+int URGLidar::decode(uint8_t* bytes, uint32_t size){
+    int decode = 0;
+    for(int i=0; i<size; ++i){
+        decode <<= 6;
+        decode &= ~0x3f;
+        decode |= bytes[i] - 0x30;
+    }
+    return decode;
+}
+
+double URGLidar::index2rad(int index){
+    return (2.0*M_PI) * (index - this->AFRT) / this->ARES;
+}
+
+double URGLidar::scan_sec(){
+    return 60.0/this->SCAN;
 }
 
 bool URGLidar::sendCmd(URGLidar::Command cmd){
-    uint8_t msg[3];
-    switch (cmd){
-        case URGLidar::SCAN:
-            msg[1] = 0x60;
-            break;
-        case URGLidar::STOP:
-            /*
-            When the system is in the scanning state, X4 has been sending out point
-            cloud data. If you need to close the scan at this time, you can send
-            this command to stop the system from scanning. After sending the stop
-            command, the system will be in standby state. At this point, the
-            device's ranging unit is in low power mode and the laser is off.
-
-            The command is unresponsive, so the system will not reply with any
-            message after receiving the command.
-            */
-            msg[1] = 0x65;
-            break;
-        case URGLidar::INFO:
-            /*
-            When an external device sends a Get Device Information command to A4
-            (A5 90), X4 will feedback the device's model, firmware version, and
-            hardware version, and the device's factory serial number.
-
-            [A5][5A][14][0][0][0][04][...content...]
-            content = [0:model][1-2: FW][3:HW][4-19:SN]
-            */
-            //uint8_t ver[3] = {'V', 'V', '\n'};
-            // s.write(ver, 3, 1);
-            // delay(10);
-            msg[0] = 'V';
-            msg[1] = 'V';
-            msg[2] = '\n';
-            break;
-        case URGLidar::HEALTH:
-            /*
-            When the external device sends the Get Device Health Status command
-            (A5 91) to X4, X4 will feedback the device's status code.
-            */
-            msg[1] = 0x91;
-            break;
-        case URGLidar::RESTART:
-            /*
-            When the external device sends the Get Device command to A4 (A5 40),
-            X4 will start a soft reboot and the system will restart. This command
-            does not answer.
-            */
-            msg[1] = 0x40;
-            break;
-        // case URGLidar::SCIP:
-        default:
-            return false;
-    }
-    this->serial.write(msg, sizeof(msg), 1);
+    this->serial.write(CommandStrings[cmd], 3, 1);
     delay(1);
     return true;
 }
@@ -137,7 +115,7 @@ void URGLidar::loop(){
     // uint8_t cmd[2] = {0x00, 0x00};
     // serial.write(cmd, 2);
     // this->restart();
-    this->sendCmd(URGLidar::RESTART);
+    // this->sendCmd(URGLidar::RESTART);
 
     this->serial.flushInput();
 
@@ -146,6 +124,12 @@ void URGLidar::loop(){
     // serial.write(go, 2);
 
     while (!this->is_shutdown){
+        // https://github.com/aldebaran/liburg/blob/master/src/cpp/urg/CaptureSettings.h
+        char buffer[] = "GDbbbbeeeegg\n";
+        // snprintf(buffer, strlen(buffer) + 1, "GD%04d%04d%02u\n", begin, end, skiplines);
+
+
+
         // data = this->serial.read();
         // decode data
         // put data into this->buffer
@@ -157,13 +141,10 @@ void URGLidar::loop(){
 }
 
 void URGLidar::motor(bool val){
-    // if (val) serial.rts(true);
-    // else serial.rts(false);
-    uint8_t laser_on[3] = {'B','M','\n'};
-    uint8_t laser_off[3] = {'Q','T','\n'};
-    if (val) serial.write(laser_on, 3, 1);
-    else serial.write(laser_off, 3, 1);
-    delay(10);
+    Command c;
+    if (val) c = URGLidar::START_LASER;
+    else c = URGLidar::STOP_LASER;
+    this->sendCmd(c);
 
     // uint8_t buffer[64];
     int num = serial.read(buffer, sizeof(buffer), 3);
@@ -183,6 +164,8 @@ void URGLidar::motor(bool val){
         else printf("** off ret[%d]: %s **\n", num, buffer);
 
     }
+
+    this->serial.flushInput();
 }
 
 void URGLidar::get(ScanData* data){

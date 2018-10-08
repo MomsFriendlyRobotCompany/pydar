@@ -41,19 +41,25 @@ typedef struct ScanData{
 class URGLidar {
 public:
     // commands for lidar
+    // enum Command {
+    //     SCAN,
+    //     STOP,
+    //     INFO,
+    //     HEALTH,
+    //     RESTART
+    // };
     enum Command {
-        SCAN,
-        STOP,
-        INFO,
-        HEALTH,
-        RESTART
+        INFO=0,
+        START_LASER,
+        STOP_LASER,
+        PARAMS
     };
 
     URGLidar();
     ~URGLidar();
     bool init(std::string port);
-    void start(void);              // start serial thread
-    void stop(void);               // stop serial thread
+    void startThread(void);              // start serial thread
+    void stopThread(void);               // stop serial thread
     bool sendCmd(Command cmd);     // send command to lidar
     void motor(bool val);          // turn motor on/off
     void get(ScanData* data);      // get scan data
@@ -64,7 +70,8 @@ public:
 
 protected:
     void loop(void);              // thread loop
-    void decode(uint8_t* bytes);  // decode raw data into scan data
+    int decode(uint8_t* bytes, uint32_t size);  // decode raw data into scan data
+    double index2rad(int index);
 
     uint8_t raw[1024];       // raw data buffer
     double scan_raw[360*2];  // scan data
@@ -75,6 +82,9 @@ protected:
     std::string port;
     uint32_t baudrate;
     uint8_t buffer[64];
+    int AFRT, ARES;
+    float SCAN;
+    int AMIN, AMAX;
 };
 
 #endif
