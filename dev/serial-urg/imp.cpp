@@ -314,10 +314,10 @@ int Serial::read(uint8_t* buf, const uint32_t numbytes, const uint8_t trys){
                 // printf("read: too many tryes: %d\n", numzeroes);
                 break;
             }
-            // printf(".");
+            printf(".");
             delay(500);
         }
-        else numread += n;
+        else numread += (uint32_t)n;
     }
 
     // printf("\n");
