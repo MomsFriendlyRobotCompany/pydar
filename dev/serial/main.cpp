@@ -18,12 +18,13 @@ void printString(string msg, uint8_t* buf, const int len){
 int main(void){
     cout << "start" << endl;
 
-    // string port = "/dev/tty.SLAB_USBtoUART";
+    string port = "/dev/tty.SLAB_USBtoUART";
     // string port = "/dev/tty.usbserial-AL034G2K";
-    string port = "/dev/tty.usbmodemFD131";
+    // string port = "/dev/tty.usbmodemFD131";
 
     Serial s = Serial();
-    s.open(port, 115200);  // ydlidar speed
+    // s.open(port, 115200);  // ydlidar speed
+    s.open(port, 128000);  // ydlidar speed
     if (s.isOpen()) printf(">> opened\n");
     else printf(">> couldn't open\n");
 
@@ -32,20 +33,22 @@ int main(void){
     // delay(2000);
     // s.dtr(false);
 
-    // // reset
-    // uint8_t restart[2] = {0xA5, 0x40};
-    // s.write(restart, 2, 1);
-    // delay(10);
-    //
-    // // info
-    // uint8_t info[2] = {0xA5, 0x90};
-    // s.write(info, 2, 1);
-    // delay(10);
+// harley.ryan.sam.1
+
+    // reset
+    uint8_t restart[2] = {0xA5, 0x40};
+    s.write(restart, 2, 1);
+    delay(10);
+
+    // info
+    uint8_t info[2] = {0xA5, 0x90};
+    s.write(info, 2, 1);
+    delay(10);
 
     // urg
-    uint8_t ver[3] = {'V', 'V', '\n'};
-    s.write(ver, 3, 1);
-    delay(10);
+    // uint8_t ver[3] = {'V', 'V', '\n'};
+    // s.write(ver, 3, 1);
+    // delay(10);
 
     // uint8_t health[2] = {0xA5, 0x91};
     // s.write2(health, 2, 1);
