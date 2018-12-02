@@ -227,8 +227,40 @@ void Serial::open(string port, uint32_t speed){
 
     options.c_cflag |= ( CLOCAL | CREAD );
 
-    ::cfsetispeed(&options, B115200);
-    ::cfsetospeed(&options, B115200);
+
+    speed_t baud;
+    bool custom_baud = true;
+    // Mac OS X 10.x Support
+#if defined(__APPLE__) && defined(__MACH__)
+#define IOSSIOSPEED _IOW('T', 2, speed_t)
+    int new_baud = static_cast<int> (baudrate_);
+    if (ioctl (fd_, IOSSIOSPEED, &new_baud, 1) < 0) {
+      THROW (IOException, errno);
+    }
+    // Linux Support
+#elif defined(__linux__) && defined (TIOCSSERIAL)
+    struct serial_struct ser;
+    ioctl (fd_, TIOCGSERIAL, &ser);
+    // set custom divisor
+    ser.custom_divisor = ser.baud_base / (int) baudrate_;
+    // update flags
+    ser.flags &= ~ASYNC_SPD_MASK;
+    ser.flags |= ASYNC_SPD_CUST;
+
+    if (ioctl (fd_, TIOCSSERIAL, &ser) < 0) {
+      THROW (IOException, errno);
+    }
+#else
+    throw invalid_argument ("OS does not currently support custom bauds");
+#endif
+
+
+
+
+
+
+    // ::cfsetispeed(&options, B115200);
+    // ::cfsetospeed(&options, B115200);
 
     options.c_cc[VMIN]  = 0;    // no minimum number of chars to read
     options.c_cc[VTIME] = 0;    // 5: 0.5 seconds read timeout
